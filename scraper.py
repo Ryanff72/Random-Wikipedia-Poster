@@ -14,23 +14,24 @@ import argparse
 
 parser = argparse.ArgumentParser(prog="random wikipedia poster",
                                  description="posts random wikipedia articles")
-parser.add_argument("--keydir", action='store_true', required=True)
+parser.add_argument("--keyloc", help="destination of the keys")
 args = parser.parse_args()
 
-with open(args.keydir, 'r') as keys:
-    api_key = keys.readline()
-    api_secret = keys.readline()
-    client_id = keys.readline()
-    client_secret = keys.readline()
-    access_token = keys.readline()
-    access_secret = keys.readline()
-    bearer_token = keys.readline()
+with open(args.keyloc, 'r') as keys:
+    api_key = keys.readline()[:-1]
+    api_secret = keys.readline()[:-1]
+    client_id = keys.readline()[:-1]
+    client_secret = keys.readline()[:-1]
+    access_token = keys.readline()[:-1]
+    access_secret = keys.readline()[:-1]
+    bearer_token = keys.readline()[:-1]
 
 bad_categories = ["All Wikipedia articles in need of updating",
                   "Articles with short description",
                   "All stub articles",
                   "People",
                   "Rights",
+                  "Musicians"
                   ]
 
 # Authenticate to Twitter
