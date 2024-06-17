@@ -73,7 +73,8 @@ def run():
             data = response.json()
         else :
             print("could not fetch.")
-            exit()
+            run()
+            break
 
         print(f"attempting: {random_title.title.text[:-12]}")
 
