@@ -14,7 +14,7 @@ import argparse
 
 parser = argparse.ArgumentParser(prog="random wikipedia poster",
                                  description="posts random wikipedia articles")
-parser.add_argument("--keyloc", help="destination of the keys")
+parser.add_argument("--keyloc", help="destination of the keys, in the order that the program reads them in")
 args = parser.parse_args()
 
 with open(args.keyloc, 'r') as keys:
