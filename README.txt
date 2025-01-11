@@ -76,10 +76,6 @@ If an error occurs, the script will print the error message and retry after one 
 
 If you find any issues or have suggestions for improvements, please open an issue or create a pull request.
 
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
 ## Acknowledgements
 
 - [Wikipedia API](https://github.com/martin-majlis/Wikipedia-API) for fetching Wikipedia content.
