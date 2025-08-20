@@ -1,180 +1,235 @@
-import webbrowser
-import requests
-import wikipediaapi
-import bs4
-import tweepy
-from pyWikiCommons import pyWikiCommons
+import argparse
+import logging
 import os
-import cairosvg
 import random
 import time
-from PIL import Image
 from io import BytesIO
-import argparse
 
+import bs4
+import cairosvg
+import requests
+import tweepy
+import wikipediaapi
+from PIL import Image
+
+logging.basicConfig(filename='wiki_poster.log', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+#parse args
 parser = argparse.ArgumentParser(prog="random wikipedia poster",
-                                 description="posts random wikipedia articles")
-parser.add_argument("--keyloc", help="destination of the keys, in the order that the program reads them in")
+                               description="Posts random Wikipedia articles with images")
+parser.add_argument("--keyloc", required=True, 
+                    help="Path to file containing X API credentials")
 args = parser.parse_args()
 
-with open(args.keyloc, 'r') as keys:
-    api_key = keys.readline()[:-1]
-    api_secret = keys.readline()[:-1]
-    client_id = keys.readline()[:-1]
-    client_secret = keys.readline()[:-1]
-    access_token = keys.readline()[:-1]
-    access_secret = keys.readline()[:-1]
-    bearer_token = keys.readline()[:-1]
+#read keys
+try:
+    with open(args.keyloc, 'r') as keys:
+        api_key = keys.readline().strip()
+        api_secret = keys.readline().strip()
+        access_token = keys.readline().strip()
+        access_secret = keys.readline().strip()
+        bearer_token = keys.readline().strip()
+except Exception as e:
+    logging.error(f"Failed to read credentials: {e}")
+    raise
 
-bad_categories = ["All Wikipedia articles in need of updating",
-                  "Articles with short description",
-                  "All stub articles",
-                  "People",
-                  "Rights",
-                  "Musicians"
-                  ]
+#auth
+try:
+    client = tweepy.Client(
+        bearer_token=bearer_token,
+        consumer_key=api_key,
+        consumer_secret=api_secret,
+        access_token=access_token,
+        access_token_secret=access_secret
+    )
+except Exception as e:
+    logging.error(f"X API authentication failed: {e}")
+    raise
+  
+bad_categories = [
+    "All Wikipedia articles in need of updating",
+    "Articles with short description",
+    "All stub articles",
+    "People",
+    "Rights",
+    "Musicians"
+]
 
-# Authenticate to Twitter
-authv1 = tweepy.OAuth1UserHandler(api_key, api_secret, access_token, access_secret)
-authv1.set_access_token(access_token, access_secret)
-apiv1 = tweepy.API(authv1)
-authv2 = tweepy.Client(bearer_token, api_key, api_secret, access_token, access_secret)
-apiv2 = tweepy.API(authv2)
-
-# test if page is suitable for posting
+#check viability
 def check_page(random_page, data):
-    thumb_ok = False
-    if 'thumbnail' in data and 'source' in data['thumbnail']:
-       thumb_ok = True 
-    print(f"article is in {len(random_page.langlinks) + 1} languages.")
+    thumb_ok = 'thumbnail' in data and 'source' in data['thumbnail']
+    num_languages = len(random_page.langlinks) + 1
+    logging.info(f"Article '{random_page.title}' is in {num_languages} languages")
+    
     categories = random_page.categories
-    rotten_article = False
-    for category in categories:
-        if category in bad_categories:
-            rotten_article = True
-    if (len(random_page.langlinks) + 1) > 2 and rotten_article == False and thumb_ok == True:
-        return True
-    run()
-    return False
+    rotten_article = any(category in bad_categories for category in categories)
+    
+    return num_languages > 2 and not rotten_article and thumb_ok
 
-# main program loop
-def run():
-    while True:
-
-        message = ""
-        post_chars_left = 271 # stay within twitter char limit
-
-        random_link = requests.get("https://en.wikipedia.org/wiki/special:Random")
-
-        random_title = bs4.BeautifulSoup(random_link.text, features="html.parser")
-        api_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{random_title.title.text[:-12]}"
-        response = requests.get(api_url)
-        if response.status_code == 200:
-            data = response.json()
-        else :
-            print("could not fetch.")
-            run()
-            break
-
-        print(f"attempting: {random_title.title.text[:-12]}")
-
-        wiki_wiki = wikipediaapi.Wikipedia("wiki idk example (example@gmail.com)", 'en')
-        random_wiki = wiki_wiki.page(random_title.title.text[:-12])
-
-        #checks suitability of page
-
-        if not check_page(random_wiki, data):
-            break
-        image_link = None
-        random_url = (f"https://en.wikipedia.org/wiki/{random_title.title.text[:-12].replace(' ', '_')}")
-        print("---------------------")
-        if 'thumbnail' in data and 'source' in data['thumbnail']:
-            print(f"Image link:")
-            print(data['thumbnail']['source'])
-            image_link = data['thumbnail']['source']
-        print("-----------------------")
-
-        # shortens url so that it can be used in the post.
-
-        def shorten_url(long_url):
-            api_url = "http://tinyurl.com/api-create.php"
-            params = {'url': long_url}
-            
-            response = requests.get(api_url, params=params)
-            
-            if response.status_code == 200:
-                return response.text
-            else:
-                return None
-
-        shortened_wiki_url = shorten_url(random_url)
-        post_chars_left -= len(shortened_wiki_url)
-
-        def random_emoji():
-            emojis = ['💠', '⚜️', '👑', '🏰', '🌍', '🌐', '🗺️', '🧭', '✅', '🆗', '🔭',
-                    '🌌', '🌝', '👀', '👁️‍🗨️', '👁️', '🪬', '🃏', '🎲', '🍻', '🥳', '🪩',
-                    'ℹ️', '🎰', '⭐', '🪐', '🌃', '🌇', '🌞', '🥵', '😈', '😏', '🔎',
-                    '📷', '✨', '❤️‍🔥', '🐢', '🍄', '🧐', '🧐', '🤯', '🤯', '🧬',
-                    '📇', '🍋', '🍎', '🍑', '🦪', '🦑', '💤', '🥱', '‼️', '😱', '🙀',
-                    '🛡️', '🫧', '♨️', '💢']
-            return random.choice(emojis)
-        emoji = random_emoji()
-        message = emoji
-        post_chars_left -= len(message)
-
-        image_to_post = None
-        #fix image link
-
-        print(image_link)
-        last_slash_pos = image_link.rfind('/')
-        #image_link = image_link[:last_slash_pos]
-
-        # Headers to mimic a request from a web browser
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
-
-        # Send a GET request to the image URL with headers
-        response = requests.get(image_link, headers=headers, stream=True)
-        base, extension = os.path.splitext(image_link)
-        image_path = f"downloaded_image{extension}"
-        os.system(f"touch {image_path}")
-        if response.status_code == 200:
-            with open(image_path, "wb") as file:
-                file.write(response.content)
-        base, extension = os.path.splitext(image_path)
-        if extension == ".svg":
-            new_png_path = base + ".png"
-            os.remove(image_path)
-            cairosvg.svg2png(url=image_path, write_to=new_png_path)
-            image_path = new_png_path
-        media_to_upload = apiv1.media_upload(filename=image_path)
-        media_id = media_to_upload.media_id
-        def tweet(api: tweepy.API, message: str, image_path=None):
-            if image_path:
-                authv2.create_tweet(text=message, media_ids=[media_id])
-            else:
-                authv2.create_tweet(text=message)
-        summary_message = random_wiki.summary[:post_chars_left]
-        final_period_pos = summary_message.rfind('.')
-        if not final_period_pos == -1:
-            summary_message = summary_message[:final_period_pos + 1]
-        else:
-            summary_message += "..."
-        message += f" {summary_message} {emoji}\n\n"
-        message += shortened_wiki_url
-        print(f"posting: {message}\n")
-        tweet(authv2, message=str(message), image_path=image_path)
-        os.remove(image_path)
-
-        print("One hour until the next post...")
-        time.sleep(3600)
-
-# Verify the authentication
-while True:
+#shorten url for text limit
+def shorten_url(long_url):
     try:
-        run()
+        api_url = "http://tinyurl.com/api-create.php"
+        params = {'url': long_url}
+        response = requests.get(api_url, params=params, timeout=10)
+        if response.status_code == 200:
+            return response.text
+        logging.error(f"TinyURL API failed: {response.status_code}")
+        return None
     except Exception as e:
-        print(e)
-        print("Trying again in 1 minute...")
-        time.sleep(60)
+        logging.error(f"Failed to shorten URL: {e}")
+        return None
+
+#upload
+def upload_media_v2(file_path, oauth_token, oauth_token_secret):
+    try:
+        url = "https://upload.twitter.com/2/media"
+        auth = tweepy.OAuth1UserHandler(
+            consumer_key=api_key,
+            consumer_secret=api_secret,
+            access_token=oauth_token,
+            access_token_secret=oauth_token_secret
+        )
+        files = {'media': open(file_path, 'rb')}
+        response = requests.post(url, files=files, auth=auth, timeout=10)
+        if response.status_code == 201:
+            media_id = response.json()['media_id_string']
+            logging.info(f"Media uploaded successfully: {media_id}")
+            return media_id
+        logging.error(f"Media upload failed: {response.status_code} - {response.text}")
+        return None
+    except Exception as e:
+        logging.error(f"Media upload error: {e}")
+        return None
+
+def tweet(client, message, image_path=None):
+    try:
+        if image_path:
+            media_id = upload_media_v2(image_path, access_token, access_secret)
+            if media_id:
+                client.create_tweet(text=message, media_ids=[media_id])
+            else:
+                logging.warning("Media upload failed, posting without image")
+                client.create_tweet(text=message)
+        else:
+            client.create_tweet(text=message)
+        logging.info(f"Posted tweet: {message}")
+    except Exception as e:
+        logging.error(f"Failed to post tweet: {e}")
+
+def random_emoji():
+    emojis = [
+        '💠', '⚜️', '👑', '🏰', '🌍', '🌐', '🗺️', '🧭', '🔭', '🌌', 
+        '🌝', '👀', '👁️‍🗨️', '🪬', '🃏', '🎲', '🍻', '🥳', '🪩', '🎰', 
+        '⭐', '🪐', '🌃', '🌇', '🌞', '😈', '😏', '🔎', '📷', '✨', 
+        '❤️‍🔥', '🐢', '🍄', '🧐', '🤯', '🧬', '🍋', '🍎', '🍑', '🦪', 
+        '🦑', '💤', '‼️', '😱', '🙀', '🛡️', '🫧', '♨️', '💢', '🚀', 
+        '🦄', '🔥', '🎮', '💎', '🪄', '⚡️', '🦁', '🌈', '💥', '🕹️', 
+        '🎉', '🦋', '🌪️', '🪶', '💡', '🎸', '🛸', '🖼️', '🧙', '🍉', 
+        '🦖', '🦒', '🌴', '🎨', '🗿', '🦹', '🦸', '🎥', '🪅'
+    ]
+    return random.choice(emojis)
+
+def run():
+    wiki_wiki = wikipediaapi.Wikipedia(
+        user_agent="wiki_poster (example@gmail.com)", language='en'
+    )
+    
+    while True:
+        try:
+            message = ""
+            post_chars_left = 271  # Stay within X character limit
+
+            # Fetch random Wikipedia page
+            random_link = requests.get(
+                "https://en.wikipedia.org/wiki/special:Random", timeout=10
+            )
+            random_title = bs4.BeautifulSoup(random_link.text, features="html.parser")
+            page_title = random_title.title.text[:-12]  # Remove " - Wikipedia"
+            logging.info(f"Attempting article: {page_title}")
+
+            # Fetch page summary
+            api_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{page_title}"
+            response = requests.get(api_url, timeout=10)
+            if response.status_code != 200:
+                logging.error(f"Failed to fetch summary: {response.status_code}")
+                continue
+            data = response.json()
+
+            # Fetch Wikipedia page details
+            random_wiki = wiki_wiki.page(page_title)
+
+            # Check suitability
+            if not check_page(random_wiki, data):
+                continue
+
+            # Get Wikipedia URL and shorten it
+            random_url = f"https://en.wikipedia.org/wiki/{page_title.replace(' ', '_')}"
+            shortened_url = shorten_url(random_url)
+            if not shortened_url:
+                logging.warning("URL shortening failed, using full URL")
+                shortened_url = random_url
+            post_chars_left -= len(shortened_url)
+
+            # Prepare tweet message
+            emoji = random_emoji()
+            message = emoji
+            post_chars_left -= len(emoji)
+
+            # Handle image
+            image_path = None
+            if 'thumbnail' in data and 'source' in data['thumbnail']:
+                image_link = data['thumbnail']['source']
+                logging.info(f"Image link: {image_link}")
+                
+                # Download image
+                headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    )
+                }
+                response = requests.get(image_link, headers=headers, stream=True, timeout=10)
+                if response.status_code == 200:
+                    base, extension = os.path.splitext(image_link)
+                    image_path = f"downloaded_image{extension}"
+                    with open(image_path, "wb") as file:
+                        file.write(response.content)
+                    
+                    # Convert SVG to PNG if needed
+                    if extension.lower() == ".svg":
+                        new_png_path = "downloaded_image.png"
+                        cairosvg.svg2png(url=image_link, write_to=new_png_path)
+                        if os.path.exists(image_path):
+                            os.remove(image_path)
+                        image_path = new_png_path
+                else:
+                    logging.error(f"Failed to download image: {response.status_code}")
+                    image_path = None
+
+            #create message
+            summary_message = random_wiki.summary[:post.chars_left]
+            final_period_pos = summary_message.rfind('.')
+            if final_period_pos != -1:
+                summary_message = summary_message[:final_period_pos + 1]
+            else:
+                summary_message += "..."
+            message += f" {summary_message} {emoji}\n\n{shortened_url}"
+            logging.info(f"Posting: {message}")
+            #post
+            tweet(client, message, image_path)
+            #clean
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
+            #wait an hour before posting again
+            logging.info("Waiting 1 hour until next post")
+            time.sleep(3600)
+
+        except Exception as e:
+            logging.error(f"Error in main loop: {e}")
+            logging.info("Retrying in 1 minute")
+            time.sleep(60)
+
+if __name__ == "__main__":
+    run()
